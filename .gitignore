@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Binaries
+bin/
+digestbot
+
+# SQLite database
+*.db
+*.db-shm
+*.db-wal
+
+# Session files (MTProto сессия — содержит токены авторизации)
+*.session
+*.json
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
