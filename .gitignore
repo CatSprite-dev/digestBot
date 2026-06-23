@@ -3,7 +3,7 @@
 
 # Binaries
 bin/
-digestbot
+/digestbot
 
 # SQLite database
 *.db
