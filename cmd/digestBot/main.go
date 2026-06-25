@@ -9,6 +9,7 @@ import (
 
 	"github.com/CatSprite-dev/digestBot/internal/storage"
 	"github.com/gotd/td/telegram"
+	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
 	"github.com/joho/godotenv"
 )
@@ -58,9 +59,36 @@ func main() {
 	if err := client.Run(ctx, func(ctx context.Context) error {
 		logger.Info("connected to Telegram")
 
+		status, err := client.Auth().Status(ctx)
+		if err != nil {
+			return fmt.Errorf("auth status: %w", err)
+		}
+
+		if !status.Authorized {
+			phone := os.Getenv("TELEGRAM_PHONE")
+			if phone == "" {
+				return fmt.Errorf("TELEGRAM_PHONE is required for auth")
+			}
+
+			password := os.Getenv("TELEGRAM_2FA_PASSWORD")
+			flow := auth.NewFlow(
+				auth.Constant(phone, password, auth.CodeAuthenticatorFunc(func(ctx context.Context, sentCode *tg.AuthSentCode) (string, error) {
+					fmt.Print("Enter code from Telegram: ")
+					var code string
+					_, err := fmt.Scan(&code)
+					return code, err
+				})),
+				auth.SendCodeOptions{},
+			)
+
+			if err := client.Auth().IfNecessary(ctx, flow); err != nil {
+				return fmt.Errorf("auth: %w", err)
+			}
+		}
+
 		self, err := client.Self(ctx)
 		if err != nil {
-			return fmt.Errorf("not authorized: %w", err)
+			return fmt.Errorf("self: %w", err)
 		}
 
 		logger.Info("logged in", "name", self.FirstName+" "+self.LastName, "username", self.Username)
