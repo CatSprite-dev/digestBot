@@ -18,9 +18,7 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	if err := godotenv.Load(); err != nil {
 		logger.Warn("no .env file, reading from environment")
