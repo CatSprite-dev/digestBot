@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strconv"
 
 	"github.com/CatSprite-dev/digestBot/internal/storage"
+	"github.com/CatSprite-dev/digestBot/internal/userbot"
+	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
@@ -15,7 +18,9 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 
 	if err := godotenv.Load(); err != nil {
 		logger.Warn("no .env file, reading from environment")
@@ -46,7 +51,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
 
 	if err := db.Init(ctx); err != nil {
 		logger.Error("failed to init storage", "error", err)
@@ -54,7 +60,14 @@ func main() {
 	}
 
 	// Telegram клиент
-	client := telegram.NewClient(apiID, apiHash, telegram.Options{})
+	dispatcher := tg.NewUpdateDispatcher()
+	client := telegram.NewClient(apiID, apiHash, telegram.Options{
+		UpdateHandler:  dispatcher,
+		SessionStorage: &session.FileStorage{Path: "./session.json"},
+	})
+
+	ub := userbot.NewUserbot(tg.NewClient(client), db, logger, dispatcher)
+	ub.Listen()
 
 	if err := client.Run(ctx, func(ctx context.Context) error {
 		logger.Info("connected to Telegram")
@@ -93,8 +106,7 @@ func main() {
 
 		logger.Info("logged in", "name", self.FirstName+" "+self.LastName, "username", self.Username)
 
-		api := tg.NewClient(client)
-		_ = api
+		<-ctx.Done()
 		return nil
 	}); err != nil {
 		logger.Error("telegram client error", "error", err)
