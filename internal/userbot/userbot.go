@@ -3,7 +3,9 @@ package userbot
 import (
 	"context"
 	"log/slog"
+	"time"
 
+	"github.com/CatSprite-dev/digestBot/internal/model"
 	"github.com/CatSprite-dev/digestBot/internal/storage"
 	"github.com/gotd/td/tg"
 )
@@ -20,12 +22,55 @@ func NewUserbot(client *tg.Client, storage *storage.Storage, logger *slog.Logger
 }
 
 func (ub *Userbot) Listen() {
-	ub.dispatcher.OnNewMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
-		msg, ok := update.Message.(*tg.Message)
-		if !ok {
-			return nil
-		}
-		ub.logger.Debug("new message received", "text", msg.Message)
+	ub.dispatcher.OnNewMessage(ub.handleNewMessage)
+}
+
+func (ub *Userbot) handleNewMessage(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
+	msg, ok := update.Message.(*tg.Message)
+	if !ok {
 		return nil
-	})
+	}
+
+	var chatID int64
+	switch peer := msg.PeerID.(type) {
+	case *tg.PeerChannel:
+		chatID = peer.ChannelID
+	case *tg.PeerChat:
+		chatID = peer.ChatID
+	default:
+		return nil
+	}
+
+	exist, err := ub.storage.ChatExists(ctx, chatID)
+	if err != nil {
+		ub.logger.Error("failed to check chat existence", "chat_id", chatID, "error", err)
+		return nil
+	}
+	if !exist {
+		return nil
+	}
+
+	m := model.Message{
+		ID:     int64(msg.ID),
+		Text:   msg.Message,
+		SentAt: time.Unix(int64(msg.Date), 0),
+		Sender: extractSender(entities, msg),
+		ChatID: chatID,
+	}
+
+	if err := ub.storage.SaveMessage(ctx, m); err != nil {
+		ub.logger.Error("failed to save message", "chat_id", chatID, "error", err)
+	}
+
+	ub.logger.Debug("message received", "chat_id", chatID, "text", msg.Message)
+	return nil
+}
+
+func extractSender(entities tg.Entities, msg *tg.Message) string {
+	if fromUser, ok := msg.FromID.(*tg.PeerUser); ok {
+		if user, ok := entities.Users[fromUser.UserID]; ok {
+			return user.FirstName + " " + user.LastName
+		}
+	}
+	return "unknown"
 }

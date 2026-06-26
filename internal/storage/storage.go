@@ -30,7 +30,7 @@ func NewStorage(path string, logger *slog.Logger) (*Storage, error) {
 func (s *Storage) Init(ctx context.Context) error {
 	query := `CREATE TABLE IF NOT EXISTS chats (
 		id       INTEGER PRIMARY KEY,
-		username TEXT NOT NULL,
+		username TEXT,
 		title    TEXT NOT NULL,
 		added_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
@@ -57,6 +57,17 @@ func (s *Storage) Init(ctx context.Context) error {
 
 	s.logger.Info("storage initialized", "tables", "chats, messages, digest_cursors")
 	return nil
+}
+
+func (s *Storage) ChatExists(ctx context.Context, chatID int64) (bool, error) {
+	query := "SELECT EXISTS(SELECT 1 FROM chats WHERE id = ?)"
+	row := s.conn.QueryRowContext(ctx, query, chatID)
+	var exist bool
+	err := row.Scan(&exist)
+	if err != nil {
+		return false, fmt.Errorf("query: %w", err)
+	}
+	return exist, nil
 }
 
 func (s *Storage) UpsertChat(ctx context.Context, chat model.Chat) error {
