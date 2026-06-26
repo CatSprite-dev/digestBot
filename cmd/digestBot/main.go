@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strconv"
 
+	"github.com/CatSprite-dev/digestBot/internal/bot"
 	"github.com/CatSprite-dev/digestBot/internal/storage"
 	"github.com/CatSprite-dev/digestBot/internal/userbot"
 	"github.com/gotd/td/session"
@@ -66,6 +67,19 @@ func main() {
 
 	ub := userbot.NewUserbot(tg.NewClient(client), db, logger, dispatcher)
 	ub.Listen()
+
+	// Telegram бот
+	token := os.Getenv("TELEGRAM_BOT_TOKEN")
+	tgBot, err := bot.NewBot(token, db, logger, ub)
+	if err != nil {
+		logger.Error("failed to create bot", "error", err)
+		os.Exit(1)
+	}
+	go func() {
+		if err := tgBot.Start(ctx); err != nil {
+			logger.Error("bot error", "error", err)
+		}
+	}()
 
 	if err := client.Run(ctx, func(ctx context.Context) error {
 		logger.Info("connected to Telegram")

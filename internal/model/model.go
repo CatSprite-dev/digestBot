@@ -4,7 +4,7 @@ import "time"
 
 type Chat struct {
 	ID       int64
-	UserName string
+	Username string
 	Title    string
 	AddedAt  time.Time
 }

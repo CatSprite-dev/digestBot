@@ -2,6 +2,7 @@ package userbot
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -64,6 +65,32 @@ func (ub *Userbot) handleNewMessage(ctx context.Context, entities tg.Entities, u
 
 	ub.logger.Debug("message received", "chat_id", chatID, "text", msg.Message)
 	return nil
+}
+
+func (ub *Userbot) ResolveChat(ctx context.Context, username string) (model.Chat, error) {
+	resolved, err := ub.client.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{Username: username})
+	if err != nil {
+		return model.Chat{}, fmt.Errorf("resolve username: %w", err)
+	}
+	if len(resolved.Chats) == 0 {
+		return model.Chat{}, fmt.Errorf("chat not found")
+	}
+
+	switch chat := resolved.Chats[0].(type) {
+	case *tg.Channel:
+		return model.Chat{
+			ID:       chat.ID,
+			Username: chat.Username,
+			Title:    chat.Title,
+		}, nil
+	case *tg.Chat:
+		return model.Chat{
+			ID:    chat.ID,
+			Title: chat.Title,
+		}, nil
+	default:
+		return model.Chat{}, fmt.Errorf("unknown chat type")
+	}
 }
 
 func extractSender(entities tg.Entities, msg *tg.Message) string {

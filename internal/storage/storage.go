@@ -62,6 +62,7 @@ func (s *Storage) Init(ctx context.Context) error {
 func (s *Storage) ChatExists(ctx context.Context, chatID int64) (bool, error) {
 	query := "SELECT EXISTS(SELECT 1 FROM chats WHERE id = ?)"
 	row := s.conn.QueryRowContext(ctx, query, chatID)
+
 	var exist bool
 	err := row.Scan(&exist)
 	if err != nil {
@@ -77,7 +78,7 @@ func (s *Storage) UpsertChat(ctx context.Context, chat model.Chat) error {
 		username = excluded.username,
 		title = excluded.title`
 
-	if _, err := s.conn.ExecContext(ctx, query, chat.ID, chat.UserName, chat.Title, chat.AddedAt); err != nil {
+	if _, err := s.conn.ExecContext(ctx, query, chat.ID, chat.Username, chat.Title, chat.AddedAt); err != nil {
 		return fmt.Errorf("upsert chat: %w", err)
 	}
 	s.logger.Info("chat added", "chat", chat.Title)
