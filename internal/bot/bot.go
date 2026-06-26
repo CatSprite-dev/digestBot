@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CatSprite-dev/digestBot/internal/digest"
 	"github.com/CatSprite-dev/digestBot/internal/model"
 	"github.com/CatSprite-dev/digestBot/internal/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -19,16 +20,17 @@ type ChatResolver interface {
 type Bot struct {
 	botAPI   *tgbotapi.BotAPI
 	resolver ChatResolver
+	digest   *digest.Digest
 	storage  *storage.Storage
 	logger   *slog.Logger
 }
 
-func NewBot(token string, storage *storage.Storage, logger *slog.Logger, resolver ChatResolver) (*Bot, error) {
+func NewBot(token string, resolver ChatResolver, digest *digest.Digest, storage *storage.Storage, logger *slog.Logger) (*Bot, error) {
 	botAPI, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("create bot: %w", err)
 	}
-	return &Bot{botAPI: botAPI, storage: storage, logger: logger, resolver: resolver}, nil
+	return &Bot{botAPI: botAPI, resolver: resolver, digest: digest, storage: storage, logger: logger}, nil
 }
 
 func (b *Bot) Start(ctx context.Context) error {
@@ -156,11 +158,16 @@ func (b *Bot) handleDigest(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	digest := "digest placeholder"
+	digestText, err := b.digest.Generate(ctx, messages)
+	if err != nil {
+		b.logger.Error("failed to generate digest", "error", err)
+		b.send(update.Message.Chat.ID, "❌ Failed to generate digest. Please try again.")
+		return
+	}
 
 	if err := b.storage.SetCursor(ctx, userID, chat.ID, time.Now()); err != nil {
 		b.logger.Error("failed to update cursor", "user_id", userID, "chat_id", chat.ID, "error", err)
 	}
 
-	b.send(update.Message.Chat.ID, digest)
+	b.send(update.Message.Chat.ID, digestText)
 }

@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/CatSprite-dev/digestBot/internal/bot"
+	"github.com/CatSprite-dev/digestBot/internal/digest"
 	"github.com/CatSprite-dev/digestBot/internal/storage"
 	"github.com/CatSprite-dev/digestBot/internal/userbot"
 	"github.com/gotd/td/session"
@@ -27,7 +28,6 @@ func main() {
 
 	apiIDStr := os.Getenv("TELEGRAM_API_ID")
 	apiHash := os.Getenv("TELEGRAM_API_HASH")
-
 	if apiIDStr == "" || apiHash == "" {
 		logger.Error("missing required env vars", "vars", "TELEGRAM_API_ID, TELEGRAM_API_HASH")
 		os.Exit(1)
@@ -58,7 +58,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Telegram клиент
+	dig := digest.NewDigest(
+		os.Getenv("LLM_BASE_URL"),
+		os.Getenv("LLM_API_KEY"),
+		os.Getenv("LLM_MODEL"),
+		logger,
+	)
+
 	dispatcher := tg.NewUpdateDispatcher()
 	client := telegram.NewClient(apiID, apiHash, telegram.Options{
 		UpdateHandler:  dispatcher,
@@ -68,13 +74,13 @@ func main() {
 	ub := userbot.NewUserbot(tg.NewClient(client), db, logger, dispatcher)
 	ub.Listen()
 
-	// Telegram бот
 	token := os.Getenv("TELEGRAM_BOT_TOKEN")
-	tgBot, err := bot.NewBot(token, db, logger, ub)
+	tgBot, err := bot.NewBot(token, ub, dig, db, logger)
 	if err != nil {
 		logger.Error("failed to create bot", "error", err)
 		os.Exit(1)
 	}
+
 	go func() {
 		if err := tgBot.Start(ctx); err != nil {
 			logger.Error("bot error", "error", err)
@@ -117,7 +123,6 @@ func main() {
 		}
 
 		logger.Info("logged in", "name", self.FirstName+" "+self.LastName, "username", self.Username)
-
 		<-ctx.Done()
 		return nil
 	}); err != nil {
