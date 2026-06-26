@@ -85,6 +85,41 @@ func (s *Storage) UpsertChat(ctx context.Context, chat model.Chat) error {
 	return nil
 }
 
+func (s *Storage) DeleteChat(ctx context.Context, chat model.Chat) error {
+	query := "DELETE FROM chats WHERE id = ?"
+
+	if _, err := s.conn.ExecContext(ctx, query, chat.ID); err != nil {
+		return fmt.Errorf("delete chat: %w", err)
+	}
+	s.logger.Info("chat deleted", "chat", chat.Title)
+	return nil
+}
+
+func (s *Storage) GetChats(ctx context.Context) ([]model.Chat, error) {
+	query := "SELECT id, username, title, added_at FROM chats"
+	rows, err := s.conn.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
+	defer rows.Close()
+
+	var chats []model.Chat
+	for rows.Next() {
+		var c model.Chat
+		if err := rows.Scan(&c.ID, &c.Username, &c.Title, &c.AddedAt); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		chats = append(chats, c)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows: %w", err)
+	}
+
+	s.logger.Debug("fetched chats", "count", len(chats))
+	return chats, nil
+}
+
 func (s *Storage) SaveMessage(ctx context.Context, message model.Message) error {
 	query := `INSERT INTO messages (id, chat_id, sender, text, sent_at)
 		VALUES (?, ?, ?, ?, ?)

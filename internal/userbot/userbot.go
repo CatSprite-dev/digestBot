@@ -24,6 +24,7 @@ func NewUserbot(client *tg.Client, storage *storage.Storage, logger *slog.Logger
 
 func (ub *Userbot) Listen() {
 	ub.dispatcher.OnNewMessage(ub.handleNewMessage)
+	ub.dispatcher.OnNewChannelMessage(ub.handleNewChannelMessage)
 }
 
 func (ub *Userbot) handleNewMessage(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
@@ -31,7 +32,18 @@ func (ub *Userbot) handleNewMessage(ctx context.Context, entities tg.Entities, u
 	if !ok {
 		return nil
 	}
+	return ub.processMessage(ctx, entities, msg)
+}
 
+func (ub *Userbot) handleNewChannelMessage(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
+	msg, ok := update.Message.(*tg.Message)
+	if !ok {
+		return nil
+	}
+	return ub.processMessage(ctx, entities, msg)
+}
+
+func (ub *Userbot) processMessage(ctx context.Context, entities tg.Entities, msg *tg.Message) error {
 	var chatID int64
 	switch peer := msg.PeerID.(type) {
 	case *tg.PeerChannel:
