@@ -8,16 +8,18 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/CatSprite-dev/digestBot/internal/model"
 )
 
 type Digest struct {
-	baseURL string
-	apiKey  string
-	model   string
-	logger  *slog.Logger
+	baseURL    string
+	apiKey     string
+	model      string
+	promptPath string
+	logger     *slog.Logger
 }
 
 type request struct {
@@ -36,8 +38,8 @@ type response struct {
 	} `json:"choices"`
 }
 
-func NewDigest(baseURL, apiKey, model string, logger *slog.Logger) *Digest {
-	return &Digest{baseURL: baseURL, apiKey: apiKey, model: model, logger: logger}
+func NewDigest(baseURL, apiKey, model, promptPath string, logger *slog.Logger) *Digest {
+	return &Digest{baseURL: baseURL, apiKey: apiKey, model: model, promptPath: promptPath, logger: logger}
 }
 
 func (d *Digest) Generate(ctx context.Context, messages []model.Message) (string, error) {
@@ -94,16 +96,15 @@ func (d *Digest) Generate(ctx context.Context, messages []model.Message) (string
 }
 
 func (d *Digest) buildPrompt(messages []model.Message) string {
+	promptTemplate, err := os.ReadFile(d.promptPath)
+	if err != nil {
+		d.logger.Warn("failed to read prompt file, using default", "path", d.promptPath, "error", err)
+		promptTemplate = []byte("Создай краткий дайджест следующих сообщений на русском языке.\n\n")
+	}
+
 	var sb strings.Builder
-	sb.WriteString("You are a Telegram chat digest assistant. Your goal is to help users quickly understand what was discussed.\n\n")
-	sb.WriteString("Analyze the messages and create a digest in Russian with the following structure:\n\n")
-	sb.WriteString("**📊 Статистика**\n")
-	sb.WriteString(fmt.Sprintf("- Количество сообщений: %d\n\n", len(messages)))
-	sb.WriteString("**💬 Темы обсуждения**\n- перечисли основные темы\n\n")
-	sb.WriteString("**✅ Выводы и решения**\n- что решили, к чему пришли, конкретные договорённости\n\n")
-	sb.WriteString("**❓ Открытые вопросы**\n- что осталось без ответа или требует продолжения\n\n")
-	sb.WriteString("If there are no conclusions or open questions — write \"Не выявлено\".\n\n")
-	sb.WriteString("Messages:\n")
+	sb.Write(promptTemplate)
+	sb.WriteString(fmt.Sprintf("\nСообщений: %d\n\n", len(messages)))
 	for _, msg := range messages {
 		sb.WriteString(msg.Sender + ": " + msg.Text + "\n")
 	}

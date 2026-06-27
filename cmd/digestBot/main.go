@@ -58,10 +58,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	promptPath := os.Getenv("DIGEST_PROMPT_PATH")
+	if promptPath == "" {
+		promptPath = "./prompt.txt"
+	}
+
 	dig := digest.NewDigest(
 		os.Getenv("LLM_BASE_URL"),
 		os.Getenv("LLM_API_KEY"),
 		os.Getenv("LLM_MODEL"),
+		promptPath,
 		logger,
 	)
 
