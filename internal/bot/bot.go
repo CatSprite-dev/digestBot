@@ -68,6 +68,7 @@ func (b *Bot) Start(ctx context.Context) error {
 
 func (b *Bot) send(chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = tgbotapi.ModeMarkdown
 	if _, err := b.botAPI.Send(msg); err != nil {
 		b.logger.Error("failed to send message", "error", err)
 	}

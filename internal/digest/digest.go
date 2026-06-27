@@ -95,7 +95,15 @@ func (d *Digest) Generate(ctx context.Context, messages []model.Message) (string
 
 func (d *Digest) buildPrompt(messages []model.Message) string {
 	var sb strings.Builder
-	sb.WriteString("Summarize the following chat messages in Russian. Focus on key topics and decisions.\n\n")
+	sb.WriteString("You are a Telegram chat digest assistant. Your goal is to help users quickly understand what was discussed.\n\n")
+	sb.WriteString("Analyze the messages and create a digest in Russian with the following structure:\n\n")
+	sb.WriteString("**📊 Статистика**\n")
+	sb.WriteString(fmt.Sprintf("- Количество сообщений: %d\n\n", len(messages)))
+	sb.WriteString("**💬 Темы обсуждения**\n- перечисли основные темы\n\n")
+	sb.WriteString("**✅ Выводы и решения**\n- что решили, к чему пришли, конкретные договорённости\n\n")
+	sb.WriteString("**❓ Открытые вопросы**\n- что осталось без ответа или требует продолжения\n\n")
+	sb.WriteString("If there are no conclusions or open questions — write \"Не выявлено\".\n\n")
+	sb.WriteString("Messages:\n")
 	for _, msg := range messages {
 		sb.WriteString(msg.Sender + ": " + msg.Text + "\n")
 	}
