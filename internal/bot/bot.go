@@ -159,6 +159,11 @@ func (b *Bot) handleDigest(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
+	messages, truncated := digest.LimitMessages(messages, 100_000)
+	if truncated {
+		b.send(update.Message.Chat.ID, fmt.Sprintf("⚠️ Показаны последние %d сообщений — слишком много для одного дайджеста.", len(messages)))
+	}
+
 	digestText, err := b.digest.Generate(ctx, messages)
 	if err != nil {
 		b.logger.Error("failed to generate digest", "error", err)

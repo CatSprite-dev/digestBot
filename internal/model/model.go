@@ -3,10 +3,11 @@ package model
 import "time"
 
 type Chat struct {
-	ID       int64
-	Username string
-	Title    string
-	AddedAt  time.Time
+	ID         int64
+	Username   string
+	Title      string
+	AddedAt    time.Time
+	AccessHash int64
 }
 
 type Message struct {

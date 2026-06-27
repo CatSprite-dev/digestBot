@@ -32,7 +32,8 @@ func (s *Storage) Init(ctx context.Context) error {
 		id       INTEGER PRIMARY KEY,
 		username TEXT,
 		title    TEXT NOT NULL,
-		added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		access_hash INTEGER
 	);
 
 	CREATE TABLE IF NOT EXISTS messages (
@@ -72,13 +73,14 @@ func (s *Storage) ChatExists(ctx context.Context, chatID int64) (bool, error) {
 }
 
 func (s *Storage) UpsertChat(ctx context.Context, chat model.Chat) error {
-	query := `INSERT INTO chats (id, username, title, added_at)
-		VALUES (?, ?, ?, ?)
+	query := `INSERT INTO chats (id, username, title, added_at, access_hash)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 		username = excluded.username,
-		title = excluded.title`
+		title = excluded.title,
+		access_hash = excluded.access_hash`
 
-	if _, err := s.conn.ExecContext(ctx, query, chat.ID, chat.Username, chat.Title, chat.AddedAt); err != nil {
+	if _, err := s.conn.ExecContext(ctx, query, chat.ID, chat.Username, chat.Title, chat.AddedAt, chat.AccessHash); err != nil {
 		return fmt.Errorf("upsert chat: %w", err)
 	}
 	s.logger.Info("chat added", "chat", chat.Title)
@@ -96,7 +98,7 @@ func (s *Storage) DeleteChat(ctx context.Context, chat model.Chat) error {
 }
 
 func (s *Storage) GetChats(ctx context.Context) ([]model.Chat, error) {
-	query := "SELECT id, username, title, added_at FROM chats"
+	query := "SELECT id, username, title, added_at, access_hash FROM chats"
 	rows, err := s.conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query: %w", err)
@@ -106,7 +108,7 @@ func (s *Storage) GetChats(ctx context.Context) ([]model.Chat, error) {
 	var chats []model.Chat
 	for rows.Next() {
 		var c model.Chat
-		if err := rows.Scan(&c.ID, &c.Username, &c.Title, &c.AddedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Username, &c.Title, &c.AddedAt, &c.AccessHash); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 		chats = append(chats, c)

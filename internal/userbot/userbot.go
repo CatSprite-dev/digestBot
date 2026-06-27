@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/CatSprite-dev/digestBot/internal/model"
 	"github.com/CatSprite-dev/digestBot/internal/storage"
@@ -44,6 +46,10 @@ func (ub *Userbot) handleNewChannelMessage(ctx context.Context, entities tg.Enti
 }
 
 func (ub *Userbot) processMessage(ctx context.Context, entities tg.Entities, msg *tg.Message) error {
+	cleanText := strings.TrimSpace(msg.Message)
+	if msg.Message == "" || utf8.RuneCountInString(cleanText) < 10 {
+		return nil
+	}
 	var chatID int64
 	switch peer := msg.PeerID.(type) {
 	case *tg.PeerChannel:
@@ -91,9 +97,10 @@ func (ub *Userbot) ResolveChat(ctx context.Context, username string) (model.Chat
 	switch chat := resolved.Chats[0].(type) {
 	case *tg.Channel:
 		return model.Chat{
-			ID:       chat.ID,
-			Username: chat.Username,
-			Title:    chat.Title,
+			ID:         chat.ID,
+			Username:   chat.Username,
+			Title:      chat.Title,
+			AccessHash: chat.AccessHash,
 		}, nil
 	case *tg.Chat:
 		return model.Chat{

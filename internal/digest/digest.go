@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/CatSprite-dev/digestBot/internal/model"
 )
@@ -109,4 +110,15 @@ func (d *Digest) buildPrompt(messages []model.Message) string {
 		sb.WriteString(msg.Sender + ": " + msg.Text + "\n")
 	}
 	return sb.String()
+}
+
+func LimitMessages(messages []model.Message, maxChars int) ([]model.Message, bool) {
+	total := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		total += utf8.RuneCountInString(messages[i].Text)
+		if total > maxChars {
+			return messages[i+1:], true // true = было обрезано
+		}
+	}
+	return messages, false
 }
