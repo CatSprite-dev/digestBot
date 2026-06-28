@@ -153,7 +153,7 @@ func (b *Bot) handleDigest(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	userID := update.Message.From.ID
-	cursor, err := b.storage.GetCursor(ctx, userID, chat.ID)
+	cursor, prevDigest, err := b.storage.GetCursor(ctx, userID, chat.ID)
 	if err != nil {
 		b.logger.Error("failed to get digest cursor", "user_id", userID, "chat_id", chat.ID, "error", err)
 		b.send(update.Message.Chat.ID, "❌ Something went wrong. Please try again.")
@@ -187,14 +187,14 @@ func (b *Bot) handleDigest(ctx context.Context, update tgbotapi.Update) {
 		))
 	}
 
-	digestText, err := b.digest.Generate(ctx, messages)
+	digestText, err := b.digest.Generate(ctx, messages, prevDigest)
 	if err != nil {
 		b.logger.Error("failed to generate digest", "error", err)
 		b.send(update.Message.Chat.ID, "❌ Failed to generate digest. Please try again.")
 		return
 	}
 
-	if err := b.storage.SetCursor(ctx, userID, chat.ID, time.Now()); err != nil {
+	if err := b.storage.SetCursor(ctx, userID, chat.ID, time.Now(), digestText); err != nil {
 		b.logger.Error("failed to update cursor", "user_id", userID, "chat_id", chat.ID, "error", err)
 	}
 

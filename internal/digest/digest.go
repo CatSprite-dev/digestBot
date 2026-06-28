@@ -44,8 +44,8 @@ func NewDigest(baseURL, apiKey, model, promptPath string, maxChars int, logger *
 	return &Digest{baseURL: baseURL, apiKey: apiKey, model: model, promptPath: promptPath, maxChars: maxChars, logger: logger}
 }
 
-func (d *Digest) Generate(ctx context.Context, messages []model.Message) (string, error) {
-	prompt := d.buildPrompt(messages)
+func (d *Digest) Generate(ctx context.Context, messages []model.Message, prevDigest string) (string, error) {
+	prompt := d.buildPrompt(messages, prevDigest)
 	url := d.baseURL + "/chat/completions"
 
 	payload := request{
@@ -97,7 +97,7 @@ func (d *Digest) Generate(ctx context.Context, messages []model.Message) (string
 	return resp.Choices[0].Message.Content, nil
 }
 
-func (d *Digest) buildPrompt(messages []model.Message) string {
+func (d *Digest) buildPrompt(messages []model.Message, prevDigest string) string {
 	promptTemplate, err := os.ReadFile(d.promptPath)
 	if err != nil {
 		d.logger.Warn("failed to read prompt file, using default", "path", d.promptPath, "error", err)
@@ -106,6 +106,11 @@ func (d *Digest) buildPrompt(messages []model.Message) string {
 
 	var sb strings.Builder
 	sb.Write(promptTemplate)
+	if prevDigest != "" {
+		sb.WriteString("\nКонтекст: ниже предыдущий дайджест этого чата. Учти его — продолжи мысль, отметь что нового или к чему пришли, не повторяй уже сказанное.\n")
+		sb.WriteString(prevDigest)
+		sb.WriteString("\n")
+	}
 	sb.WriteString(fmt.Sprintf("\nСообщений: %d\n\n", len(messages)))
 	for _, msg := range messages {
 		sb.WriteString(msg.Sender + ": " + msg.Text + "\n")

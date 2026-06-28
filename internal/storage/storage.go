@@ -52,6 +52,7 @@ func (s *Storage) Init(ctx context.Context) error {
 		user_id      INTEGER NOT NULL,
 		chat_id      INTEGER NOT NULL REFERENCES chats(id),
 		last_read_at DATETIME NOT NULL,
+		last_digest TEXT,
 		PRIMARY KEY (user_id, chat_id)
 	);`
 
@@ -184,28 +185,30 @@ func (s *Storage) GetMessagesSince(ctx context.Context, chatID int64, since time
 	return messages, nil
 }
 
-func (s *Storage) GetCursor(ctx context.Context, userID, chatID int64) (time.Time, error) {
-	query := `SELECT last_read_at FROM digest_cursors WHERE user_id = ? AND chat_id = ?`
+func (s *Storage) GetCursor(ctx context.Context, userID, chatID int64) (time.Time, string, error) {
+	query := `SELECT last_read_at, last_digest FROM digest_cursors WHERE user_id = ? AND chat_id = ?`
 
 	var t time.Time
-	err := s.conn.QueryRowContext(ctx, query, userID, chatID).Scan(&t)
+	var digest sql.NullString
+	err := s.conn.QueryRowContext(ctx, query, userID, chatID).Scan(&t, &digest)
 	if err == sql.ErrNoRows {
-		return time.Time{}, nil
+		return time.Time{}, "", nil
 	}
 	if err != nil {
-		return time.Time{}, fmt.Errorf("get cursor: %w", err)
+		return time.Time{}, "", fmt.Errorf("get cursor: %w", err)
 	}
 
-	return t, nil
+	return t, digest.String, nil
 }
 
-func (s *Storage) SetCursor(ctx context.Context, userID, chatID int64, t time.Time) error {
-	query := `INSERT INTO digest_cursors (user_id, chat_id, last_read_at)
-		VALUES (?, ?, ?)
+func (s *Storage) SetCursor(ctx context.Context, userID, chatID int64, t time.Time, digest string) error {
+	query := `INSERT INTO digest_cursors (user_id, chat_id, last_read_at, last_digest)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT(user_id, chat_id) DO UPDATE SET
-			last_read_at = excluded.last_read_at`
+			last_read_at = excluded.last_read_at,
+			last_digest = excluded.last_digest`
 
-	if _, err := s.conn.ExecContext(ctx, query, userID, chatID, t); err != nil {
+	if _, err := s.conn.ExecContext(ctx, query, userID, chatID, t, digest); err != nil {
 		return fmt.Errorf("set cursor: %w", err)
 	}
 	s.logger.Info("cursor set successful", "chat", chatID, "time", t)
