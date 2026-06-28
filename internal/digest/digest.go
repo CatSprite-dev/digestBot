@@ -20,6 +20,7 @@ type Digest struct {
 	apiKey     string
 	model      string
 	promptPath string
+	maxChars   int
 	logger     *slog.Logger
 }
 
@@ -39,8 +40,8 @@ type response struct {
 	} `json:"choices"`
 }
 
-func NewDigest(baseURL, apiKey, model, promptPath string, logger *slog.Logger) *Digest {
-	return &Digest{baseURL: baseURL, apiKey: apiKey, model: model, promptPath: promptPath, logger: logger}
+func NewDigest(baseURL, apiKey, model, promptPath string, maxChars int, logger *slog.Logger) *Digest {
+	return &Digest{baseURL: baseURL, apiKey: apiKey, model: model, promptPath: promptPath, maxChars: maxChars, logger: logger}
 }
 
 func (d *Digest) Generate(ctx context.Context, messages []model.Message) (string, error) {
@@ -112,11 +113,11 @@ func (d *Digest) buildPrompt(messages []model.Message) string {
 	return sb.String()
 }
 
-func LimitMessages(messages []model.Message, maxChars int) ([]model.Message, bool) {
+func (d *Digest) LimitMessages(messages []model.Message) ([]model.Message, bool) {
 	total := 0
 	for i := len(messages) - 1; i >= 0; i-- {
 		total += utf8.RuneCountInString(messages[i].Text)
-		if total > maxChars {
+		if total > d.maxChars {
 			return messages[i+1:], true // true = было обрезано
 		}
 	}

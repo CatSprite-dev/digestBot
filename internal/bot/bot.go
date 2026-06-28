@@ -2,6 +2,8 @@ package bot
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,24 +15,25 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-type ChatResolver interface {
+type ChatService interface {
 	ResolveChat(ctx context.Context, username string) (model.Chat, error)
+	LoadHistory(ctx context.Context, chat model.Chat) error
 }
 
 type Bot struct {
-	botAPI   *tgbotapi.BotAPI
-	resolver ChatResolver
-	digest   *digest.Digest
-	storage  *storage.Storage
-	logger   *slog.Logger
+	botAPI      *tgbotapi.BotAPI
+	chatService ChatService
+	digest      *digest.Digest
+	storage     *storage.Storage
+	logger      *slog.Logger
 }
 
-func NewBot(token string, resolver ChatResolver, digest *digest.Digest, storage *storage.Storage, logger *slog.Logger) (*Bot, error) {
+func NewBot(token string, chatService ChatService, digest *digest.Digest, storage *storage.Storage, logger *slog.Logger) (*Bot, error) {
 	botAPI, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("create bot: %w", err)
 	}
-	return &Bot{botAPI: botAPI, resolver: resolver, digest: digest, storage: storage, logger: logger}, nil
+	return &Bot{botAPI: botAPI, chatService: chatService, digest: digest, storage: storage, logger: logger}, nil
 }
 
 func (b *Bot) Start(ctx context.Context) error {
@@ -76,7 +79,7 @@ func (b *Bot) send(chatID int64, text string) {
 
 func (b *Bot) handleAdd(ctx context.Context, update tgbotapi.Update) {
 	args := strings.TrimPrefix(update.Message.CommandArguments(), "@")
-	chat, err := b.resolver.ResolveChat(ctx, args)
+	chat, err := b.chatService.ResolveChat(ctx, args)
 	if err != nil {
 		b.logger.Error("failed to resolve chat", "username", args, "error", err)
 		b.send(update.Message.Chat.ID, "❌ Chat not found. Make sure the username is correct.")
@@ -89,12 +92,16 @@ func (b *Bot) handleAdd(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
+	if err := b.chatService.LoadHistory(ctx, chat); err != nil {
+		b.logger.Error("failed to load history", "chat_id", chat.ID, "error", err)
+	}
+
 	b.send(update.Message.Chat.ID, "✅ Chat added: "+chat.Title)
 }
 
 func (b *Bot) handleRemove(ctx context.Context, update tgbotapi.Update) {
 	args := strings.TrimPrefix(update.Message.CommandArguments(), "@")
-	chat, err := b.resolver.ResolveChat(ctx, args)
+	chat, err := b.chatService.ResolveChat(ctx, args)
 	if err != nil {
 		b.logger.Error("failed to resolve chat", "username", args, "error", err)
 		b.send(update.Message.Chat.ID, "❌ Chat not found. Make sure the username is correct.")
@@ -133,10 +140,15 @@ func (b *Bot) handleChats(ctx context.Context, update tgbotapi.Update) {
 
 func (b *Bot) handleDigest(ctx context.Context, update tgbotapi.Update) {
 	args := strings.TrimPrefix(update.Message.CommandArguments(), "@")
-	chat, err := b.resolver.ResolveChat(ctx, args)
+
+	chat, err := b.storage.GetChatByUsername(ctx, args)
+	if errors.Is(err, sql.ErrNoRows) {
+		b.send(update.Message.Chat.ID, "❌ This chat is not tracked. Add it first with /add")
+		return
+	}
 	if err != nil {
-		b.logger.Error("failed to resolve chat", "username", args, "error", err)
-		b.send(update.Message.Chat.ID, "❌ Chat not found. Make sure the username is correct.")
+		b.logger.Error("failed to get chat", "username", args, "error", err)
+		b.send(update.Message.Chat.ID, "❌ Something went wrong. Please try again.")
 		return
 	}
 
@@ -147,6 +159,7 @@ func (b *Bot) handleDigest(ctx context.Context, update tgbotapi.Update) {
 		b.send(update.Message.Chat.ID, "❌ Something went wrong. Please try again.")
 		return
 	}
+
 	messages, err := b.storage.GetMessagesSince(ctx, chat.ID, cursor)
 	if err != nil {
 		b.logger.Error("failed to fetch messages", "chat_id", chat.ID, "error", err)
@@ -159,9 +172,19 @@ func (b *Bot) handleDigest(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	messages, truncated := digest.LimitMessages(messages, 100_000)
-	if truncated {
-		b.send(update.Message.Chat.ID, fmt.Sprintf("⚠️ Показаны последние %d сообщений — слишком много для одного дайджеста.", len(messages)))
+	totalCount := len(messages)
+	messages, truncated := b.digest.LimitMessages(messages)
+
+	if cursor.IsZero() {
+		// первый дайджест
+		b.send(update.Message.Chat.ID, fmt.Sprintf(
+			"📝 First digest based on the last %d messages.", len(messages),
+		))
+	} else if truncated {
+		// последующий, но обрезано
+		b.send(update.Message.Chat.ID, fmt.Sprintf(
+			"⚠️ %d new messages, digest covers the last %d.", totalCount, len(messages),
+		))
 	}
 
 	digestText, err := b.digest.Generate(ctx, messages)

@@ -46,8 +46,7 @@ func (ub *Userbot) handleNewChannelMessage(ctx context.Context, entities tg.Enti
 }
 
 func (ub *Userbot) processMessage(ctx context.Context, entities tg.Entities, msg *tg.Message) error {
-	cleanText := strings.TrimSpace(msg.Message)
-	if msg.Message == "" || utf8.RuneCountInString(cleanText) < 10 {
+	if !isValidMessage(msg) {
 		return nil
 	}
 	var chatID int64
@@ -69,18 +68,11 @@ func (ub *Userbot) processMessage(ctx context.Context, entities tg.Entities, msg
 		return nil
 	}
 
-	m := model.Message{
-		ID:     int64(msg.ID),
-		Text:   msg.Message,
-		SentAt: time.Unix(int64(msg.Date), 0),
-		Sender: extractSender(entities, msg),
-		ChatID: chatID,
-	}
-
-	if err := ub.storage.SaveMessage(ctx, m); err != nil {
+	sender := extractSender(entities.Users, msg)
+	err = ub.buildAndSave(ctx, chatID, sender, msg)
+	if err != nil {
 		ub.logger.Error("failed to save message", "chat_id", chatID, "error", err)
 	}
-
 	ub.logger.Debug("message received", "chat_id", chatID, "text", msg.Message)
 	return nil
 }
@@ -112,11 +104,103 @@ func (ub *Userbot) ResolveChat(ctx context.Context, username string) (model.Chat
 	}
 }
 
-func extractSender(entities tg.Entities, msg *tg.Message) string {
+func (ub *Userbot) LoadHistory(ctx context.Context, chat model.Chat) error {
+	const (
+		batchSize = 100
+		maxChars  = 50_000
+		maxAge    = 7 * 24 * time.Hour
+	)
+
+	edge := time.Now().Add(-maxAge)
+	peer := tg.InputPeerChannel{ChannelID: chat.ID, AccessHash: chat.AccessHash}
+
+	offsetID := 0
+	totalChars := 0
+	savedCount := 0
+
+	for {
+		chunk, err := ub.client.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+			Peer:     &peer,
+			Limit:    batchSize,
+			OffsetID: offsetID,
+		})
+		if err != nil {
+			return fmt.Errorf("get history (chat %d): %w", chat.ID, err)
+		}
+
+		messages, ok := chunk.(*tg.MessagesChannelMessages)
+		if !ok {
+			ub.logger.Warn("unexpected history type", "chat_id", chat.ID, "type", fmt.Sprintf("%T", chunk))
+			return nil
+		}
+		if len(messages.Messages) == 0 {
+			break
+		}
+
+		users := messages.MapUsers().UserToMap()
+
+		for _, raw := range messages.Messages {
+			msg, ok := raw.(*tg.Message)
+			if !ok {
+				continue
+			}
+
+			if time.Unix(int64(msg.Date), 0).Before(edge) {
+				ub.logger.Info("history loaded", "chat_id", chat.ID, "saved", savedCount, "reason", "age limit")
+				return nil
+			}
+
+			if !isValidMessage(msg) {
+				continue
+			}
+
+			sender := extractSender(users, msg)
+			if err := ub.buildAndSave(ctx, chat.ID, sender, msg); err != nil {
+				ub.logger.Error("failed to save history message", "chat_id", chat.ID, "msg_id", msg.ID, "error", err)
+				continue
+			}
+
+			savedCount++
+			totalChars += utf8.RuneCountInString(strings.TrimSpace(msg.Message))
+			if totalChars >= maxChars {
+				ub.logger.Info("history loaded", "chat_id", chat.ID, "saved", savedCount, "reason", "char limit")
+				return nil
+			}
+		}
+
+		offsetID = messages.Messages[len(messages.Messages)-1].GetID()
+	}
+
+	ub.logger.Info("history loaded", "chat_id", chat.ID, "saved", savedCount, "reason", "reached chat start")
+	return nil
+}
+
+func (ub *Userbot) buildAndSave(ctx context.Context, chatID int64, sender string, msg *tg.Message) error {
+	m := model.Message{
+		ID:     int64(msg.ID),
+		Text:   msg.Message,
+		SentAt: time.Unix(int64(msg.Date), 0),
+		Sender: sender,
+		ChatID: chatID,
+	}
+
+	if err := ub.storage.SaveMessage(ctx, m); err != nil {
+		return fmt.Errorf("save message: %w", err)
+	}
+
+	return nil
+}
+
+func extractSender(users map[int64]*tg.User, msg *tg.Message) string {
 	if fromUser, ok := msg.FromID.(*tg.PeerUser); ok {
-		if user, ok := entities.Users[fromUser.UserID]; ok {
+		if user, ok := users[fromUser.UserID]; ok {
 			return user.FirstName + " " + user.LastName
 		}
 	}
 	return "unknown"
+}
+
+func isValidMessage(msg *tg.Message) bool {
+	cleanText := strings.TrimSpace(msg.Message)
+	return utf8.RuneCountInString(cleanText) >= 10
 }

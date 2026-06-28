@@ -24,6 +24,9 @@ func NewStorage(path string, logger *slog.Logger) (*Storage, error) {
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
+	if _, err := conn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
+		return nil, fmt.Errorf("enable foreign keys: %w", err)
+	}
 	return &Storage{conn: conn, logger: logger}, nil
 }
 
@@ -97,6 +100,22 @@ func (s *Storage) DeleteChat(ctx context.Context, chat model.Chat) error {
 	return nil
 }
 
+func (s *Storage) GetChatByUsername(ctx context.Context, chatUsername string) (model.Chat, error) {
+	query := "SELECT id, username, title, added_at, access_hash FROM chats WHERE username = ?"
+	var chat model.Chat
+	err := s.conn.QueryRowContext(ctx, query, chatUsername).Scan(
+		&chat.ID, &chat.Username, &chat.Title, &chat.AddedAt, &chat.AccessHash,
+	)
+	if err == sql.ErrNoRows {
+		return model.Chat{}, sql.ErrNoRows
+	}
+	if err != nil {
+		return model.Chat{}, fmt.Errorf("get chat by username: %w", err)
+	}
+
+	return chat, nil
+}
+
 func (s *Storage) GetChats(ctx context.Context) ([]model.Chat, error) {
 	query := "SELECT id, username, title, added_at, access_hash FROM chats"
 	rows, err := s.conn.QueryContext(ctx, query)
@@ -131,7 +150,7 @@ func (s *Storage) SaveMessage(ctx context.Context, message model.Message) error 
 		return fmt.Errorf("save message: %w", err)
 	}
 
-	s.logger.Info("message saved", "from", message.Sender, "date", message.SentAt)
+	s.logger.Debug("message saved", "from", message.Sender, "date", message.SentAt)
 	return nil
 }
 

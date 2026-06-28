@@ -63,11 +63,22 @@ func main() {
 		promptPath = "./prompt.txt"
 	}
 
+	maxChars := 20000
+	if v := os.Getenv("MAX_DIGEST_CHARS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			logger.Error("MAX_DIGEST_CHARS must be a number", "error", err)
+			os.Exit(1)
+		}
+		maxChars = n
+	}
+
 	dig := digest.NewDigest(
 		os.Getenv("LLM_BASE_URL"),
 		os.Getenv("LLM_API_KEY"),
 		os.Getenv("LLM_MODEL"),
 		promptPath,
+		maxChars,
 		logger,
 	)
 
