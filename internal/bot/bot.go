@@ -185,6 +185,8 @@ func (b *Bot) handleDigest(ctx context.Context, update tgbotapi.Update) {
 		b.send(update.Message.Chat.ID, fmt.Sprintf(
 			"⚠️ %d new messages, digest covers the last %d.", totalCount, len(messages),
 		))
+	} else {
+		b.send(update.Message.Chat.ID, fmt.Sprintf("📝 Digest based on %d new messages.", len(messages)))
 	}
 
 	digestText, err := b.digest.Generate(ctx, messages, prevDigest)
