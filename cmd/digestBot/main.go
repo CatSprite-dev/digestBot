@@ -14,7 +14,6 @@ import (
 	"github.com/CatSprite-dev/digestBot/internal/userbot"
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
-	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
 	"github.com/joho/godotenv"
 )
@@ -41,7 +40,7 @@ func main() {
 
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
-		dbPath = "./data.db"
+		dbPath = "./data/data.db"
 	}
 
 	db, err := storage.NewStorage(dbPath, logger)
@@ -82,10 +81,15 @@ func main() {
 		logger,
 	)
 
+	sessionPath := os.Getenv("SESSION_PATH")
+	if sessionPath == "" {
+		sessionPath = "./data/session.json"
+	}
+
 	dispatcher := tg.NewUpdateDispatcher()
 	client := telegram.NewClient(apiID, apiHash, telegram.Options{
 		UpdateHandler:  dispatcher,
-		SessionStorage: &session.FileStorage{Path: "./session.json"},
+		SessionStorage: &session.FileStorage{Path: sessionPath},
 	})
 
 	ub := userbot.NewUserbot(tg.NewClient(client), db, logger, dispatcher)
@@ -111,27 +115,8 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("auth status: %w", err)
 		}
-
 		if !status.Authorized {
-			phone := os.Getenv("TELEGRAM_PHONE")
-			if phone == "" {
-				return fmt.Errorf("TELEGRAM_PHONE is required for auth")
-			}
-
-			password := os.Getenv("TELEGRAM_2FA_PASSWORD")
-			flow := auth.NewFlow(
-				auth.Constant(phone, password, auth.CodeAuthenticatorFunc(func(ctx context.Context, sentCode *tg.AuthSentCode) (string, error) {
-					fmt.Print("Enter code from Telegram: ")
-					var code string
-					_, err := fmt.Scan(&code)
-					return code, err
-				})),
-				auth.SendCodeOptions{},
-			)
-
-			if err := client.Auth().IfNecessary(ctx, flow); err != nil {
-				return fmt.Errorf("auth: %w", err)
-			}
+			return fmt.Errorf("session is not authorized — run 'go run ./cmd/qrauth' first")
 		}
 
 		self, err := client.Self(ctx)
