@@ -1,5 +1,6 @@
 services:
   digestBot:
+    image: digest-bot-app
     build: 
       context: .
       dockerfile: ./Dockerfile
