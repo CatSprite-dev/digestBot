@@ -27,6 +27,12 @@ func NewStorage(path string, logger *slog.Logger) (*Storage, error) {
 	if _, err := conn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
 		return nil, fmt.Errorf("enable foreign keys: %w", err)
 	}
+	if _, err := conn.ExecContext(context.Background(), "PRAGMA journal_mode = WAL"); err != nil {
+		return nil, fmt.Errorf("set wal mode: %w", err)
+	}
+	if _, err := conn.ExecContext(context.Background(), "PRAGMA busy_timeout = 5000"); err != nil {
+		return nil, fmt.Errorf("set busy timeout: %w", err)
+	}
 	return &Storage{conn: conn, logger: logger}, nil
 }
 

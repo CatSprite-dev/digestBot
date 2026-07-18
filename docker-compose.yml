@@ -1,9 +1,6 @@
 services:
   digestBot:
-    image: digest-bot-app
-    build: 
-      context: .
-      dockerfile: ./Dockerfile
+    image: catspritedev/digestbot:latest
     env_file:
       - .env
     restart: unless-stopped
