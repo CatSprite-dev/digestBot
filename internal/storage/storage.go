@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"github.com/CatSprite-dev/digestBot/internal/model"
@@ -17,22 +18,24 @@ type Storage struct {
 }
 
 func NewStorage(path string, logger *slog.Logger) (*Storage, error) {
-	conn, err := sql.Open("sqlite", path)
+	val := url.Values{}
+	val.Add("_journal_mode", "WAL")
+	val.Add("_busy_timeout", "5000")
+	val.Add("_foreign_keys", "ON")
+
+	dsn := path + "?" + val.Encode()
+
+	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
+
+	conn.SetMaxOpenConns(1)
+
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	if _, err := conn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
-		return nil, fmt.Errorf("enable foreign keys: %w", err)
-	}
-	if _, err := conn.ExecContext(context.Background(), "PRAGMA journal_mode = WAL"); err != nil {
-		return nil, fmt.Errorf("set wal mode: %w", err)
-	}
-	if _, err := conn.ExecContext(context.Background(), "PRAGMA busy_timeout = 5000"); err != nil {
-		return nil, fmt.Errorf("set busy timeout: %w", err)
-	}
+
 	return &Storage{conn: conn, logger: logger}, nil
 }
 
